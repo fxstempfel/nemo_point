@@ -1,0 +1,5 @@
+folium
+geopy
+OSMPythonTools
+scipy==1.17
+shapely
