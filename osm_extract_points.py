@@ -6,8 +6,10 @@ from shapely import MultiPoint
 from shapely.geometry import shape
 
 
+REGION = "France métropolitaine"
+
 nominatim = Nominatim()
-area_id = nominatim.query("France métropolitaine").areaId()
+area_id = nominatim.query(REGION).areaId()
 
 overpass = Overpass()
 query = overpassQueryBuilder(
@@ -22,4 +24,4 @@ print(f"Found {len(results)} results")
 
 centers = MultiPoint([shape(x.geometry()).centroid for x in results])
 
-pathlib.Path("points.wkt").write_text(centers.wkt)
+pathlib.Path(f"points_{REGION.lower()}.wkt").write_text(centers.wkt)

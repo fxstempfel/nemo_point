@@ -1,5 +1,6 @@
 folium
-geopy
+geopandas
 OSMPythonTools
+pyproj
 scipy==1.17
 shapely

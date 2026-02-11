@@ -3,24 +3,24 @@ import pathlib
 
 import folium
 import folium.vector_layers
+import numpy as np
 import pandas as pd
-from geopy.distance import distance
+import pyproj
 from scipy import spatial
-from shapely import wkt
-from shapely import MultiPoint, Point
-
+from shapely import ops, prepared, wkt
+from shapely import MultiPolygon, Point, Polygon
 
 logging.basicConfig(
      level=logging.INFO, 
      format= '%(asctime)s {%(pathname)s:%(lineno)d} [%(levelname)s] %(message)s',
  )
 
-REGION = "Yonne"
+REGION = "France métropolitaine"
 
 
 def load_points():
     """Read a MultiPoint with coordinates as (lon, lat)."""
-    return wkt.loads(pathlib.Path("points.wkt").read_text())
+    return wkt.loads(pathlib.Path(f"points_{REGION.lower()}.wkt").read_text())
 
 
 def load_region():
@@ -28,81 +28,121 @@ def load_region():
     return wkt.loads(pathlib.Path(f"region_{REGION.lower()}.wkt").read_text())
 
 
-def filter_points(points: MultiPoint) -> MultiPoint:
-    """Filter points by removing points that are close to each other"""
-    # TODO
+def project(obj, transform):
+    """Project `obj` to the transformation defined by `transform`."""
+    return ops.transform(transform, obj)
 
 
-def compute_min_distances(
-        voronoi: spatial.Voronoi,
-        points: list[Point],
-        region,
-    ) -> pd.DataFrame:
-    """For all Voronoi vertices, compute minimal distance to points."""
-    points = pd.Series(points)
-    logging.info(f"Computing minimum distance to {len(points)} points")
+def project_region_and_points(region, points):
+    transformer = pyproj.Transformer.from_crs(
+        "EPSG:4326",  # WGS84 (lon, lat)
+        "EPSG:2154",  # Lambert-93
+        always_xy=True, # ensures (lon, lat) order
+    )
 
-    min_distances = []
-    min_points = []
-    min_vertice = []
+    region = ops.transform(transformer.transform, region)
+    points = ops.transform(transformer.transform, points)
+
+    return region, points
+
+
+def get_region_border(region: MultiPolygon | Polygon) -> list[Polygon]:
+    """Make a list of folium Polygons out of a shapely (Multi)Polygon."""
+    if isinstance(region, MultiPolygon):
+        boundaries = list(region.boundary.geoms)
+    else:
+        boundaries = [region.boundary]
+    
+    result = []
+    for b in boundaries:
+        border = zip(list(b.xy[1]), list(b.xy[0]))
+        polygon = folium.vector_layers.Polygon(
+            border,
+            tooltip=REGION,
+            color="red",
+        )
+        result.append(polygon)
+
+    logging.info(f"Generated {len(result)} polygons")
+    return result
+
+
+def compute_min_distances(voronoi, points, region):
+    # Convert points to numpy array
+    coords = np.array([(p.x, p.y) for p in points])
+
+    # Prepare region for .contains calls
+    region = prepared.prep(region)
+
+    # Build KDTree
+    tree = spatial.cKDTree(coords)
 
     vertices = voronoi.vertices
-    logging.info(f"{len(vertices)} to process...")
-    for i, vertice in enumerate(vertices):
-        if i % 10 == 0:
-            logging.info(f"Processing vertice #{i + 1}/{len(vertices)}")
-        pt_vertice = Point(vertice)
-        if not region.contains(pt_vertice):
+    results = []
+    for i, vertex in enumerate(vertices):
+        if i % 1000 == 0:
+            logging.info(f"Processing vertex #{i + 1}/{len(vertices)}")
+
+        pt_vertex = Point(vertex)
+        if not region.contains(pt_vertex):
             continue
 
-        # compute distances from all points to this vertice
-        distances = points.apply(lambda x: distance(vertice, (x.x, x.y)))
+        # Query nearest neighbor (O(log n))
+        dist, idx = tree.query(vertex)
+        results.append((dist, points[idx], pt_vertex))
 
-        # only keep the point that has the minimal distance to this vertice
-        arg_min = distances.argmin()
-        min_distances.append(distances[arg_min])
-        min_points.append(points[arg_min])
-        min_vertice.append(pt_vertice)
-    
-    return pd.DataFrame({"dist": min_distances, "point": min_points, "vertice": min_vertice})
+    return pd.DataFrame(results, columns=["dist", "point", "vertice"])         
 
 
-def fill_map(map: folium.Map, points: list[Point], nemos: pd.DataFrame):
-    # add points to map
-    for p in points:
-        folium.Marker(
-            location=(p.y, p.x),
-            icon=folium.Icon(color="green"),
-            tooltip=str(p),
-        ).add_to(map)
+def create_map(region, nemos: pd.DataFrame):
+    # project everything back to WGS84
+    transformer = pyproj.Transformer.from_crs(
+        "EPSG:2154",
+        "EPSG:4326",
+        always_xy=True,
+    )
+    region = ops.transform(transformer.transform, region)
+    nemos["vertice"] = nemos["vertice"].apply(lambda x: ops.transform(transformer.transform, x))
+    nemos["point"] = nemos["point"].apply(lambda x: ops.transform(transformer.transform, x))
+
+    # create map with region outline
+    centre = region.centroid
+    map = folium.Map(location=(centre.y, centre.x))
+    border_polygons = get_region_border(region)
+    for p in border_polygons:
+        p.add_to(map)
+
+    def make_markers(row, is_nemo=False):
+        nemo = folium.Marker(
+            location=(row["vertice"].y, row["vertice"].x),
+            icon=folium.Icon(color="black" if is_nemo else "blue"),
+            tooltip=f'{row["vertice"]} is {row["dist"] / 1000:.01f} km to {row["point"]}',
+        )
+        point = folium.Marker(
+            location=(row["point"].y, row["point"].x),
+            icon=folium.Icon(color="orange" if is_nemo else "green"),
+            tooltip=f'{row["point"]}',
+        )
+        nemo.add_to(map)
+        point.add_to(map)
     
     # add Nemo point to map
-    nemos.apply(lambda row: folium.Marker(
-        location=(row["vertice"].y, row["vertice"].x),
-        icon=folium.Icon(color="blue"),
-        tooltip=f'{row["vertice"]} is {row["dist"]} to {row["point"]}',
-    ).add_to(map), axis=1)
+    make_markers(nemos.iloc[0], is_nemo=True)
 
+    # add next closest Nemo candidates to map
+    nemos.iloc[1:].apply(make_markers, axis=1)
+
+    return map
 
 
 if __name__ == "__main__":
-    # TODO 
-    #  - add buffer to region when searching for pitches: we want to consider pitches that are in neighbor regions
-    #  - filter points for performance
-    #  - show Nemo point in a different color than top 10
+    # TODO
     #  - config file
     #  - readme
 
     pts = load_points()
     region = load_region()
-    centre = region.centroid
-    map = folium.Map(location=(centre.y, centre.x))
-    border = zip(list(region.boundary.xy[1]), list(region.boundary.xy[0]))
-    folium.vector_layers.Polygon(
-        border,
-        tooltip=REGION,
-        color="red",
-    ).add_to(map)
+    region, pts = project_region_and_points(region, pts)
 
     pts = list(pts.geoms)
     voronoi = spatial.Voronoi([(x.x, x.y) for x in pts])
@@ -111,9 +151,8 @@ if __name__ == "__main__":
     # the Nemo point corresponds to the maximum distance. Keep the first 10 Nemo points
     df = df.sort_values("dist", ascending=False).head(10)
     nemo = df.iloc[0]
-    print(f"Nemo point is {nemo.vertice}, with a distance of {nemo.dist}")
+    print(f"Nemo point is {nemo.vertice}, with a distance of {nemo.dist} meters")
 
-    fill_map(map, points=pts, nemos=df)
-
-    map.save("map.html")
+    map = create_map(region=region, nemos=df)
+    map.save(f"map_{REGION.lower()}.html")
     
