@@ -1,32 +1,29 @@
-import pathlib
-
 from OSMPythonTools.overpass import Overpass
 from shapely.geometry import MultiPoint
 from shapely.geometry import shape
 
+import util
 
-REGION = "France métropolitaine"
-BUFFER_KM = 30
 
 # get region geometry
 overpass = Overpass()
-buffer_m = BUFFER_KM * 1000
+buffer_m = util.CONFIG["buffer_km"] * 1000
+
+filters = "".join(f"[{x}]" for x in util.CONFIG["osm_filters"])
+objects = "\n".join(
+    f"  {obj}{filters}({area});"
+    for obj in ("node","way", "relation")
+    # area.a within the area, around.a:<buffer> around the area within the buffer
+    for area in ("area.a", f"around.a:{buffer_m}")
+)
 query = f"""
 relation
   ["boundary"="administrative"]
-  ["name"="{REGION}"];
+  ["name"="{util.CONFIG['osm_region_name']}"];
 map_to_area -> .a;
 
 (
-  # within the area
-  node["sport"="soccer"]["leisure"="pitch"](area.a);
-  way["sport"="soccer"]["leisure"="pitch"](area.a);
-  relation["sport"="soccer"]["leisure"="pitch"](area.a);
-
-  # around the area
-  node["sport"="soccer"]["leisure"="pitch"](around.a:{buffer_m});
-  way["sport"="soccer"]["leisure"="pitch"](around.a:{buffer_m});jj
-  relation["sport"="soccer"]["leisure"="pitch"](around.a:{buffer_m});
+{objects}
 );
 
 out geom;
@@ -36,4 +33,4 @@ results = result.elements()
 print(f"Found {len(results)} results")
 
 centers = MultiPoint([shape(x.geometry()).centroid for x in results])
-pathlib.Path(f"points_{REGION.lower()}.wkt").write_text(centers.wkt)
+util.OSM_POINTS_PATH.write_text(centers.wkt)

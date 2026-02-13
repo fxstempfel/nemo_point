@@ -1,17 +1,14 @@
-import pathlib
-
 import geopandas as gpd
 from OSMPythonTools.overpass import Overpass
 from shapely.geometry import box, shape
 from shapely.ops import unary_union
 
+import util
 
-OSM_REGION_NAME = "France métropolitaine"
-PATH_LAND_POLYGON = r"D:\Documents\osm_land_poolygon_split_4326\land-polygons-split-4326\land_polygons.shp"
 
 # Load land polygons
 print("Loading global land polygons...")
-land_gdf = gpd.read_file(PATH_LAND_POLYGON)
+land_gdf = gpd.read_file(util.CONFIG["paths"]["land_polygons"])
 print(f"Loaded {len(land_gdf)} land polygons")
 
 
@@ -57,9 +54,9 @@ def clip_region_to_land(region_geom):
 
 if __name__ == "__main__":
     print("Querying region from OSM...")
-    region = get_region_geometry(OSM_REGION_NAME)
+    region = get_region_geometry(util.CONFIG["osm_region_name"])
 
     print("Clipping to land...")
     land_region = clip_region_to_land(region)
 
-    pathlib.Path(f"region_{OSM_REGION_NAME.lower()}.wkt").write_text(land_region.wkt)
+    util.OSM_REGION_PATH.write_text(land_region.wkt)

@@ -1,5 +1,4 @@
 import logging
-import pathlib
 
 import folium
 import folium.vector_layers
@@ -10,22 +9,22 @@ from scipy import spatial
 from shapely import ops, prepared, wkt
 from shapely import MultiPolygon, Point, Polygon
 
+import util
+
 logging.basicConfig(
      level=logging.INFO, 
      format= '%(asctime)s {%(pathname)s:%(lineno)d} [%(levelname)s] %(message)s',
  )
 
-REGION = "France métropolitaine"
-
 
 def load_points():
     """Read a MultiPoint with coordinates as (lon, lat)."""
-    return wkt.loads(pathlib.Path(f"points_{REGION.lower()}.wkt").read_text())
+    return wkt.loads(util.OSM_POINTS_PATH.read_text())
 
 
 def load_region():
     """Read a (Multi)Polygon with coordinates as (lon, lat)."""
-    return wkt.loads(pathlib.Path(f"region_{REGION.lower()}.wkt").read_text())
+    return wkt.loads(util.OSM_REGION_PATH.read_text())
 
 
 def project(obj, transform):
@@ -58,7 +57,7 @@ def get_region_border(region: MultiPolygon | Polygon) -> list[Polygon]:
         border = zip(list(b.xy[1]), list(b.xy[0]))
         polygon = folium.vector_layers.Polygon(
             border,
-            tooltip=REGION,
+            tooltip=util.CONFIG["osm_region_name"],
             color="red",
         )
         result.append(polygon)
@@ -107,7 +106,7 @@ def create_map(region, nemos: pd.DataFrame):
 
     # create map with region outline
     centre = region.centroid
-    map = folium.Map(location=(centre.y, centre.x))
+    map = folium.Map(location=(centre.y, centre.x), zoom_start=util.CONFIG.get("map_zoom_start_level", 6))
     border_polygons = get_region_border(region)
     for p in border_polygons:
         p.add_to(map)
@@ -136,10 +135,6 @@ def create_map(region, nemos: pd.DataFrame):
 
 
 if __name__ == "__main__":
-    # TODO
-    #  - config file
-    #  - readme
-
     pts = load_points()
     region = load_region()
     region, pts = project_region_and_points(region, pts)
@@ -154,5 +149,5 @@ if __name__ == "__main__":
     print(f"Nemo point is {nemo.vertice}, with a distance of {nemo.dist} meters")
 
     map = create_map(region=region, nemos=df)
-    map.save(f"map_{REGION.lower()}.html")
+    map.save(util.MAP_OUTPUT_PATH)
     

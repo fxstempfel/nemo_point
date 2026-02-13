@@ -1,0 +1,10 @@
+paths:
+  resources: ./resources/
+  output: ./output/
+  land_polygons: D:\\Documents\\osm_land_poolygon_split_4326\\land-polygons-split-4326\\land_polygons.shp
+osm_region_name: France métropolitaine
+osm_filters:
+  - '"sport"="soccer"'
+  - '"leisure"="pitch"'
+buffer_km: 30
+map_zoom_start_level: 6

@@ -1,6 +1,7 @@
-folium
-geopandas
-OSMPythonTools
-pyproj
+folium==0.20.0
+geopandas==1.1.2
+OSMPythonTools==0.3.6
+pyproj==3.7.2
+PyYAML==6.0.3
 scipy==1.17
-shapely
+shapely==2.1.2
