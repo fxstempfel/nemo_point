@@ -19,4 +19,4 @@ We can extend this concept to a point that is defined as the farthest from any p
 
 ## Example
 
-The example included in this repository is the point in Metropolitan France that is the farthest from any soccer pitch.
+The example included in this repository is the point in Metropolitan France that is the farthest from any public swimming pool.

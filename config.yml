@@ -2,10 +2,12 @@ paths:
   resources: ./resources/
   output: ./output/
   land_polygons: D:\\Documents\\osm_land_poolygon_split_4326\\land-polygons-split-4326\\land_polygons.shp
-target_name: soccer_pitch  # added to output and resources file names
+target_name: swimming_pools  # added to output and resources file names
 osm_region_name: France métropolitaine
-osm_filters:
-  - '"sport"="soccer"'
-  - '"leisure"="pitch"'
+osm_filters:  # list items are unioned (or), dict items are intersected (and)
+  - sport: swimming
+    leisure: sports_centre
+  - sport: swimming
+    leisure: sports_hall
 buffer_km: 30
 map_zoom_start_level: 6

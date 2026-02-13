@@ -5,16 +5,20 @@ from shapely.geometry import shape
 import util
 
 
-# get region geometry
+# get region geometry with an Overpass query
 overpass = Overpass()
 buffer_m = util.CONFIG["buffer_km"] * 1000
 
-filters = "".join(f"[{x}]" for x in util.CONFIG["osm_filters"])
+filters = [
+    "".join(f'["{key}"="{val}"]' for key, val in filter.items())
+    for filter in util.CONFIG["osm_filters"]
+]
 objects = "\n".join(
-    f"  {obj}{filters}({area});"
+    f"  {obj}{f}({area});"
     for obj in ("node","way", "relation")
     # area.a within the area, around.a:<buffer> around the area within the buffer
     for area in ("area.a", f"around.a:{buffer_m}")
+    for f in filters
 )
 query = f"""
 relation
